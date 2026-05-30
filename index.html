@@ -200,7 +200,7 @@ body {
     <button id="mapZoomOut" type="button" title="縮小">－</button>
     <button id="mapReset" type="button" title="位置を戻す">⟲</button>
   </div>
-  <svg id="warningMap" role="img" aria-label="気象警報・注意報地図"></svg>
+  <svg id="warningMap" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="気象警報・注意報地図"></svg>
   <div id="mapNote">地図を読み込み中...</div>
 </div>
 
@@ -212,66 +212,23 @@ const AREA_JSON_URL = `${JMA_BASE}/common/const/area.json`;
 const WARNING_R8_BASE_URL = `${JMA_BASE}/warning/data/r8`;
 const GEOJSON_BASE_URL = `${JMA_BASE}/common/const/geojson`;
 const GEOJSON_INDEXES = [0,1,2,3,4,5,6,7,8,9];
-
 const regionCodeByName = {
-  "宗谷地方": "011000",
-  "上川・留萌地方": "012000",
-  "網走・北見・紋別地方": "013000",
-  "十勝地方": "014030",
-  "釧路・根室地方": "014100",
-  "胆振・日高地方": "015000",
-  "石狩・空知・後志地方": "016000",
-  "渡島・檜山地方": "017000",
-  "青森県": "020000",
-  "岩手県": "030000",
-  "宮城県": "040000",
-  "秋田県": "050000",
-  "山形県": "060000",
-  "福島県": "070000",
-  "茨城県": "080000",
-  "栃木県": "090000",
-  "群馬県": "100000",
-  "埼玉県": "110000",
-  "千葉県": "120000",
-  "東京都": "130000",
-  "神奈川県": "140000",
-  "新潟県": "150000",
-  "富山県": "160000",
-  "石川県": "170000",
-  "福井県": "180000",
-  "山梨県": "190000",
-  "長野県": "200000",
-  "岐阜県": "210000",
-  "静岡県": "220000",
-  "愛知県": "230000",
-  "三重県": "240000",
-  "滋賀県": "250000",
-  "京都府": "260000",
-  "大阪府": "270000",
-  "兵庫県": "280000",
-  "奈良県": "290000",
-  "和歌山県": "300000",
-  "鳥取県": "310000",
-  "島根県": "320000",
-  "岡山県": "330000",
-  "広島県": "340000",
-  "山口県": "350000",
-  "徳島県": "360000",
-  "香川県": "370000",
-  "愛媛県": "380000",
-  "高知県": "390000",
-  "福岡県": "400000",
-  "佐賀県": "410000",
-  "長崎県": "420000",
-  "熊本県": "430000",
-  "大分県": "440000",
-  "宮崎県": "450000",
-  "奄美地方（鹿児島県）": "460040",
-  "鹿児島県（奄美地方を除く）": "460100",
-  "沖縄本島地方": "471000",
-  "大東島地方": "472000",
-  "宮古島地方": "473000",
-  "八重山地方": "474000"
+  "宗谷地方": "011000", "上川・留萌地方": "012000", "網走・北見・紋別地方": "013000",
+  "十勝地方": "014030", "釧路・根室地方": "014100", "胆振・日高地方": "015000",
+  "石狩・空知・後志地方": "016000", "渡島・檜山地方": "017000", "青森県": "020000",
+  "岩手県": "030000", "宮城県": "040000", "秋田県": "050000", "山形県": "060000",
+  "福島県": "070000", "茨城県": "080000", "栃木県": "090000", "群馬県": "100000",
+  "埼玉県": "110000", "千葉県": "120000", "東京都": "130000", "神奈川県": "140000",
+  "新潟県": "150000", "富山県": "160000", "石川県": "170000", "福井県": "180000",
+  "山梨県": "190000", "長野県": "200000", "岐阜県": "210000", "静岡県": "220000",
+  "愛知県": "230000", "三重県": "240000", "滋賀県": "250000", "京都府": "260000",
+  "大阪府": "270000", "兵庫県": "280000", "奈良県": "290000", "和歌山県": "300000",
+  "鳥取県": "310000", "島根県": "320000", "岡山県": "330000", "広島県": "340000",
+  "山口県": "350000", "徳島県": "360000", "香川県": "370000", "愛媛県": "380000",
+  "高知県": "390000", "福岡県": "400000", "佐賀県": "410000", "長崎県": "420000",
+  "熊本県": "430000", "大分県": "440000", "宮崎県": "450000",
+  "奄美地方（鹿児島県）": "460040", "鹿児島県（奄美地方を除く）": "460100",
+  "沖縄本島地方": "471000", "大東島地方": "472000", "宮古島地方": "473000", "八重山地方": "474000"
 };
 
 let areaDataCache = null;
@@ -282,16 +239,13 @@ let mapDrag = {active: false, startX: 0, startY: 0, originX: 0, originY: 0};
 
 function setNowTime() {
   const now = new Date();
-
   const YYYY = now.getFullYear();
   const MM = String(now.getMonth() + 1).padStart(2, '0');
   const dd = String(now.getDate()).padStart(2, '0');
   const HH = String(now.getHours()).padStart(2, '0');
   const mm = String(now.getMinutes()).padStart(2, '0');
   const ss = String(now.getSeconds()).padStart(2, '0');
-
-  document.getElementById("updateTime").textContent =
-    `取得日時: ${YYYY}/${MM}/${dd} ${HH}:${mm}:${ss}`;
+  document.getElementById("updateTime").textContent = `取得日時: ${YYYY}/${MM}/${dd} ${HH}:${mm}:${ss}`;
 }
 
 setNowTime();
@@ -299,84 +253,58 @@ setNowTime();
 async function main(mode=2,taisho_chiiki="全国",statusFormat=false) {
   const updateId = ++latestUpdateId;
   try {
-  const warnArea = {
-  "00":{name:"解除",level:null},
-  "02":{name:"暴風雪警報",level:3},
-  "03":{name:"レベル３大雨警報",level:3},
-  "04":{name:"洪水警報",level:3},
-  "05":{name:"暴風警報",level:3},
-  "06":{name:"大雪警報",level:3},
-  "07":{name:"波浪警報",level:3},
-  "08":{name:"レベル３高潮警報",level:3},
-  "09":{name:"レベル３土砂災害警報",level:3},
-  "10":{name:"レベル２大雨注意報",level:2},
-  "12":{name:"大雪注意報",level:2},
-  "13":{name:"風雪注意報",level:2},
-  "14":{name:"雷注意報",level:2},
-  "15":{name:"強風注意報",level:2},
-  "16":{name:"波浪注意報",level:2},
-  "17":{name:"融雪注意報",level:2},
-  "18":{name:"洪水注意報",level:2},
-  "19":{name:"レベル２高潮注意報",level:2},
-  "20":{name:"濃霧注意報",level:2},
-  "21":{name:"乾燥注意報",level:2},
-  "22":{name:"なだれ注意報",level:2},
-  "23":{name:"低温注意報",level:2},
-  "24":{name:"霜注意報",level:2},
-  "25":{name:"着氷注意報",level:2},
-  "26":{name:"着雪注意報",level:2},
-  "27":{name:"その他の注意報",level:2},
-  "29":{name:"レベル２土砂災害注意報",level:2},
-  "32":{name:"暴風雪特別警報",level:5},
-  "33":{name:"レベル５大雨特別警報",level:5},
-  "35":{name:"暴風特別警報",level:5},
-  "36":{name:"大雪特別警報",level:5},
-  "37":{name:"波浪特別警報",level:5},
-  "38":{name:"レベル５高潮特別警報",level:5},
-  "39":{name:"レベル５土砂災害特別警報",level:5},
-  "42":{name:"未定・予約",level:null},
-  "43":{name:"レベル４大雨危険警報",level:4},
-  "45":{name:"未定・予約",level:null},
-  "46":{name:"未定・予約",level:null},
-  "47":{name:"未定・予約",level:null},
-  "48":{name:"レベル４高潮危険警報",level:4},
-  "49":{name:"レベル４土砂災害危険警報",level:4}
-};
+    const warnArea = {
+      "00":{name:"解除",level:null},
+      "02":{name:"暴風雪警報",level:3}, "03":{name:"レベル３大雨警報",level:3},
+      "04":{name:"洪水警報",level:3}, "05":{name:"暴風警報",level:3},
+      "06":{name:"大雪警報",level:3}, "07":{name:"波浪警報",level:3},
+      "08":{name:"レベル３高潮警報",level:3}, "09":{name:"レベル３土砂災害警報",level:3},
+      "10":{name:"レベル２大雨注意報",level:2}, "12":{name:"大雪注意報",level:2},
+      "13":{name:"風雪注意報",level:2}, "14":{name:"雷注意報",level:2},
+      "15":{name:"強風注意報",level:2}, "16":{name:"波浪注意報",level:2},
+      "17":{name:"融雪注意報",level:2}, "18":{name:"洪水注意報",level:2},
+      "19":{name:"レベル２高潮注意報",level:2}, "20":{name:"濃霧注意報",level:2},
+      "21":{name:"乾燥注意報",level:2}, "22":{name:"なだれ注意報",level:2},
+      "23":{name:"低温注意報",level:2}, "24":{name:"霜注意報",level:2},
+      "25":{name:"着氷注意報",level:2}, "26":{name:"着雪注意報",level:2},
+      "27":{name:"その他の注意報",level:2}, "29":{name:"レベル２土砂災害注意報",level:2},
+      "32":{name:"暴風雪特別警報",level:5}, "33":{name:"レベル５大雨特別警報",level:5},
+      "35":{name:"暴風特別警報",level:5}, "36":{name:"大雪特別警報",level:5},
+      "37":{name:"波浪特別警報",level:5}, "38":{name:"レベル５高潮特別警報",level:5},
+      "39":{name:"レベル５土砂災害特別警報",level:5},
+      "42":{name:"未定・予約",level:null}, "43":{name:"レベル４大雨危険警報",level:4},
+      "45":{name:"未定・予約",level:null}, "46":{name:"未定・予約",level:null},
+      "47":{name:"未定・予約",level:null}, "48":{name:"レベル４高潮危険警報",level:4},
+      "49":{name:"レベル４土砂災害危険警報",level:4}
+    };
 
     document.getElementById("eew").textContent = "読み込み中...";
-
     const {warnData,regionReportDT,mapInfo} = await getCityWarningsByArea(warnArea,taisho_chiiki);
     if (updateId !== latestUpdateId) return;
+    
     const data = warnData;
-
     const dt = new Date(regionReportDT || data.reportDatetime || Date.now());
     const MM = String(dt.getMonth() + 1).padStart(2, '0');
     const dd = String(dt.getDate()).padStart(2, '0');
     const HH = String(dt.getHours()).padStart(2, '0');
     const mm = String(dt.getMinutes()).padStart(2, '0');
 
-    let titleKind = "";
-    if (mode===2) titleKind = "気象警報・注意報";
-    else if (mode===3) titleKind = "気象警報";
-    else if (mode===4) titleKind = "気象危険/特別警報";
-    let titleArea1 = "";  let titleArea2 = "";
-    if (taisho_chiiki==="全国") titleArea1 = "全国の";
-    else titleArea2 = "\n"+taisho_chiiki;
+    let titleKind = mode===2 ? "気象警報・注意報" : (mode===3 ? "気象警報" : "気象危険/特別警報");
+    let titleArea1 = taisho_chiiki==="全国" ? "全国の" : "";
+    let titleArea2 = taisho_chiiki==="全国" ? "" : "\n"+taisho_chiiki;
 
     let text = "";
     if (statusFormat) {
       text = `《${titleKind}》${titleArea2}\n${dd}日${HH}時${mm}分 ${data.publishingOffice || "気象庁"}発表`;
     } else {
       text = `《${titleArea1}${titleKind}》${titleArea2}\n${MM}月${dd}日${HH}時${mm}分`;
-      if (regionReportDT) text += " 発表";
-      else text += " 更新";
+      text += regionReportDT ? " 発表" : " 更新";
     }
-    let count = 0;
 
+    let count = 0;
     for (const warnName in data.warnInfo) {
       const areas = data.warnInfo[warnName];
       if (Object.keys(areas).length === 0) continue;
-
       const info = Object.values(warnArea).find(w => w.name === warnName);
       if (!info || info.level < mode) continue;
 
@@ -385,7 +313,6 @@ async function main(mode=2,taisho_chiiki="全国",statusFormat=false) {
 
       for (const areaName in areas) {
         if (taisho_chiiki !== "全国" && areaName !== taisho_chiiki) continue;
-
         const cities = areas[areaName];
         if (!cities || cities.length === 0) continue;
 
@@ -399,16 +326,13 @@ async function main(mode=2,taisho_chiiki="全国",statusFormat=false) {
         if (statusFormat) {
           const statusGroups = data.statusInfo?.[warnName]?.[areaName] || {"発表": cities};
           for (const status in statusGroups) {
-            if (taisho_chiiki === "全国") block += `\n【${areaName} ${status}】`;
-            else block += `\n【${status}】`;
+            block += taisho_chiiki === "全国" ? `\n【${areaName} ${status}】` : `\n【${status}】`;
             block += statusGroups[status].join("　");
           }
         } else {
-          block += `\n【${areaName}】\n`;
-          block += cities.join("　");
+          block += `\n【${areaName}】\n` + cities.join("　");
         }
       }
-
       text += block;
     }
 
@@ -440,7 +364,6 @@ async function getCityWarningsByArea(warnArea,taisho_chiiki="全国") {
   let publishingOffice = "";
 
   const dataJson = await fetchR8WarningData(targetCodes);
-
   for (const item of dataJson) {
     if (!item || !item.warning) continue;
     if (reportDatetime==="") {
@@ -453,7 +376,6 @@ async function getCityWarningsByArea(warnArea,taisho_chiiki="全国") {
 
     const largeAreaCode = item.regionCode;
     const largeAreaName = getRegionName(largeAreaCode);
-
     if (largeAreaName && taisho_chiiki===largeAreaName) {
       if (!regionReportDT || item.reportDatetime > regionReportDT) regionReportDT = item.reportDatetime || "NaN";
     }
@@ -465,17 +387,13 @@ async function getCityWarningsByArea(warnArea,taisho_chiiki="全国") {
 
       for (const w of area.kinds || []) {
         if (!w.code || w.status === "解除") continue;
-
         const info = warnArea[w.code];
         if (!info) continue;
 
         const warnName = info.name;
         if (!warnName || !warnByTypeAndArea[warnName]) continue;
 
-        if (!warnByTypeAndArea[warnName][largeAreaName]) {
-          warnByTypeAndArea[warnName][largeAreaName] = [];
-        }
-
+        if (!warnByTypeAndArea[warnName][largeAreaName]) warnByTypeAndArea[warnName][largeAreaName] = [];
         if (!warnByTypeAndArea[warnName][largeAreaName].includes(cityName)) {
           warnByTypeAndArea[warnName][largeAreaName].push(cityName);
         }
@@ -489,29 +407,15 @@ async function getCityWarningsByArea(warnArea,taisho_chiiki="全国") {
 
         const currentLevel = cityWarnLevels[area.areaCode]?.level || 0;
         if ((info.level || 0) > currentLevel) {
-          cityWarnLevels[area.areaCode] = {
-            level: info.level,
-            name: warnName,
-            cityName
-          };
+          cityWarnLevels[area.areaCode] = { level: info.level, name: warnName, cityName };
         }
       }
     }
   }
 
-  const warnData = {
-    "reportDatetime": reportDatetime,
-    "publishingOffice": publishingOffice,
-    "warnInfo": warnByTypeAndArea,
-    "statusInfo": statusInfo
-  };
-  const mapInfo = {
-    targetCodes,
-    cityWarnLevels,
-    areaData
-  };
-
-  return {warnData,regionReportDT,mapInfo};
+  const warnData = { reportDatetime, publishingOffice, warnInfo: warnByTypeAndArea, statusInfo };
+  const mapInfo = { targetCodes, cityWarnLevels, areaData };
+  return {warnData, regionReportDT, mapInfo};
 }
 
 function createWarnInfoTemplate(warnArea) {
@@ -567,19 +471,26 @@ async function fetchR8WarningData(regionCodes) {
       const reports = await res.json();
       return reports.map(report => ({...report, regionCode}));
     } catch(e) {
-      console.warn(`警報JSON取得失敗: ${url}`, e);
       return [];
     }
   }));
-
   return results.flat();
 }
+
+// ==========================================
+// 地図描画・操作系（改修部分）
+// ==========================================
 
 async function renderWarningMap(mapInfo, taisho_chiiki) {
   const svg = document.getElementById("warningMap");
   const note = document.getElementById("mapNote");
   const title = document.getElementById("mapTitle");
-  svg.textContent = "";
+  
+  // 安全なSVG内要素のクリア（textContent = "" は不具合の元）
+  while (svg.firstChild) {
+    svg.removeChild(svg.firstChild);
+  }
+  
   title.textContent = `地図表示: ${taisho_chiiki}`;
   note.textContent = "地図を描画中...";
 
@@ -588,7 +499,7 @@ async function renderWarningMap(mapInfo, taisho_chiiki) {
     const targetCityCodes = getTargetCityCodes(mapInfo.areaData, mapInfo.targetCodes);
     const targetSet = new Set(targetCityCodes);
     const targetFeatures = features.filter(feature => targetSet.has(feature.properties?.code));
-
+    
     if (targetFeatures.length === 0) {
       note.textContent = "表示できる地図データがありません。";
       return;
@@ -609,46 +520,56 @@ function getTargetCityCodes(areaData, regionCodes) {
 
 function isCityInTargetRegion(areaData, cityCode, regionSet) {
   let code = cityCode;
-
   for (let i = 0; i < 8; i++) {
     if (regionSet.has(code)) return true;
-    const node =
-      areaData.class20s?.[code] ||
-      areaData.class15s?.[code] ||
-      areaData.class10s?.[code] ||
-      areaData.offices?.[code];
+    const node = areaData.class20s?.[code] || areaData.class15s?.[code] || areaData.class10s?.[code] || areaData.offices?.[code];
     const parent = node?.parent;
     if (!parent || parent === code) return false;
     code = parent;
   }
-
   return false;
 }
 
 function drawGeoJsonSvg(svg, features, cityWarnLevels) {
   const bounds = getFeatureBounds(features);
+  
+  // 表示幅の取得（0除算回避）
   const width = Math.max(svg.clientWidth || 640, 320);
   const height = Math.max(svg.clientHeight || 420, 260);
   const padding = 12;
-  const scaleX = (width - padding * 2) / Math.max(bounds.maxLon - bounds.minLon, 0.0001);
-  const scaleY = (height - padding * 2) / Math.max(bounds.maxLat - bounds.minLat, 0.0001);
+  
+  // 緯度によるアスペクト比の補正（日本地図が横に伸びるのを防ぐ）
+  const centerLat = (bounds.minLat + bounds.maxLat) / 2;
+  const cosLat = Math.cos(centerLat * Math.PI / 180);
+
+  const dx = Math.max((bounds.maxLon - bounds.minLon) * cosLat, 0.0001);
+  const dy = Math.max(bounds.maxLat - bounds.minLat, 0.0001);
+
+  const scaleX = (width - padding * 2) / dx;
+  const scaleY = (height - padding * 2) / dy;
   const scale = Math.min(scaleX, scaleY);
-  const mapWidth = (bounds.maxLon - bounds.minLon) * scale;
-  const mapHeight = (bounds.maxLat - bounds.minLat) * scale;
+  
+  const mapWidth = dx * scale;
+  const mapHeight = dy * scale;
   const offsetX = (width - mapWidth) / 2;
   const offsetY = (height - mapHeight) / 2;
 
   svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
-  svg.textContent = "";
+  
+  // 再度安全にクリア
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+  
   mapView = {scale: 1, x: 0, y: 0};
-
   const layer = document.createElementNS("http://www.w3.org/2000/svg", "g");
   layer.setAttribute("id", "mapLayer");
   svg.appendChild(layer);
 
   for (const feature of features) {
+    const d = geometryToPath(feature.geometry, bounds, scale, offsetX, offsetY, cosLat);
+    if (!d) continue; // パスが空の場合は描画しない
+
     const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    path.setAttribute("d", geometryToPath(feature.geometry, bounds, scale, offsetX, offsetY));
+    path.setAttribute("d", d);
     path.setAttribute("class", "mapArea");
 
     const code = feature.properties?.code;
@@ -669,8 +590,9 @@ function getFeatureBounds(features) {
   const bounds = {minLon: Infinity, maxLon: -Infinity, minLat: Infinity, maxLat: -Infinity};
   for (const feature of features) {
     walkCoordinates(feature.geometry?.coordinates, point => {
-      const lon = point[0];
-      const lat = point[1];
+      const lon = Number(point[0]);
+      const lat = Number(point[1]);
+      if(isNaN(lon) || isNaN(lat)) return;
       if (lon < bounds.minLon) bounds.minLon = lon;
       if (lon > bounds.maxLon) bounds.maxLon = lon;
       if (lat < bounds.minLat) bounds.minLat = lat;
@@ -680,22 +602,28 @@ function getFeatureBounds(features) {
   return bounds;
 }
 
-function geometryToPath(geometry, bounds, scale, offsetX, offsetY) {
-  if (!geometry) return "";
-  const polygons = geometry.type === "Polygon" ? [geometry.coordinates] : geometry.coordinates;
+function geometryToPath(geometry, bounds, scale, offsetX, offsetY, cosLat) {
+  if (!geometry || !geometry.coordinates) return "";
+  const polygons = geometry.type === "Polygon" ? [geometry.coordinates] : 
+                   (geometry.type === "MultiPolygon" ? geometry.coordinates : []);
+                   
   let d = "";
-
-  for (const polygon of polygons || []) {
+  for (const polygon of polygons) {
     for (const ring of polygon) {
+      if (!ring || ring.length === 0) continue;
       ring.forEach((point, index) => {
-        const x = offsetX + (point[0] - bounds.minLon) * scale;
-        const y = offsetY + (bounds.maxLat - point[1]) * scale;
+        const px = Number(point[0]);
+        const py = Number(point[1]);
+        if(isNaN(px) || isNaN(py)) return;
+        
+        // 補正をかけた座標計算
+        const x = offsetX + (px - bounds.minLon) * cosLat * scale;
+        const y = offsetY + (bounds.maxLat - py) * scale;
         d += `${index === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`;
       });
       d += "Z";
     }
   }
-
   return d;
 }
 
@@ -721,7 +649,13 @@ function getMapColor(level) {
 function applyMapTransform() {
   const layer = document.getElementById("mapLayer");
   if (!layer) return;
-  layer.setAttribute("transform", `translate(${mapView.x.toFixed(2)} ${mapView.y.toFixed(2)}) scale(${mapView.scale.toFixed(4)})`);
+  
+  // NaNによるSVG全体の破壊を防ぐ
+  const tx = isNaN(mapView.x) ? 0 : mapView.x;
+  const ty = isNaN(mapView.y) ? 0 : mapView.y;
+  const ts = isNaN(mapView.scale) ? 1 : Math.max(0.1, mapView.scale);
+  
+  layer.setAttribute("transform", `translate(${tx.toFixed(2)}, ${ty.toFixed(2)}) scale(${ts.toFixed(4)})`);
 }
 
 function zoomMap(factor, centerX, centerY) {
@@ -729,8 +663,12 @@ function zoomMap(factor, centerX, centerY) {
   const newScale = Math.min(16, Math.max(0.6, oldScale * factor));
   if (newScale === oldScale) return;
 
-  mapView.x = centerX - (centerX - mapView.x) * (newScale / oldScale);
-  mapView.y = centerY - (centerY - mapView.y) * (newScale / oldScale);
+  // 中心座標がNaNにならないように保護
+  const cx = isNaN(centerX) ? 0 : centerX;
+  const cy = isNaN(centerY) ? 0 : centerY;
+
+  mapView.x = cx - (cx - mapView.x) * (newScale / oldScale);
+  mapView.y = cy - (cy - mapView.y) * (newScale / oldScale);
   mapView.scale = newScale;
   applyMapTransform();
 }
@@ -743,10 +681,23 @@ function resetMapView() {
 function getSvgPoint(svg, event) {
   const rect = svg.getBoundingClientRect();
   const viewBox = svg.viewBox.baseVal;
+  
+  // 0除算によるNaN発生を完全に防止
+  const rectWidth = rect.width || svg.clientWidth || 1;
+  const rectHeight = rect.height || svg.clientHeight || 1;
+  const vbWidth = (viewBox && viewBox.width > 0) ? viewBox.width : rectWidth;
+  const vbHeight = (viewBox && viewBox.height > 0) ? viewBox.height : rectHeight;
+
   return {
-    x: (event.clientX - rect.left) * (viewBox.width / rect.width),
-    y: (event.clientY - rect.top) * (viewBox.height / rect.height)
+    x: (event.clientX - rect.left) * (vbWidth / rectWidth),
+    y: (event.clientY - rect.top) * (vbHeight / rectHeight)
   };
+}
+
+function getCenterPoint(svg) {
+  const viewBox = svg.viewBox.baseVal;
+  if (viewBox && viewBox.width > 0) return { x: viewBox.width / 2, y: viewBox.height / 2 };
+  return { x: (svg.clientWidth || 640) / 2, y: (svg.clientHeight || 420) / 2 };
 }
 
 function setupMapInteraction() {
@@ -759,7 +710,7 @@ function setupMapInteraction() {
   }, {passive: false});
 
   svg.addEventListener("pointerdown", event => {
-    svg.setPointerCapture(event.pointerId);
+    try { svg.setPointerCapture(event.pointerId); } catch(e) {}
     const point = getSvgPoint(svg, event);
     mapDrag = {
       active: true,
@@ -780,9 +731,11 @@ function setupMapInteraction() {
   });
 
   const stopDrag = event => {
-    if (event.pointerId !== undefined && svg.hasPointerCapture(event.pointerId)) {
-      svg.releasePointerCapture(event.pointerId);
-    }
+    try {
+      if (event.pointerId !== undefined && svg.hasPointerCapture(event.pointerId)) {
+        svg.releasePointerCapture(event.pointerId);
+      }
+    } catch(e) {}
     mapDrag.active = false;
     svg.classList.remove("dragging");
   };
@@ -795,13 +748,15 @@ function setupMapInteraction() {
   });
 
   document.getElementById("mapZoomIn").addEventListener("click", () => {
-    const viewBox = svg.viewBox.baseVal;
-    zoomMap(1.25, viewBox.width / 2, viewBox.height / 2);
+    const center = getCenterPoint(svg);
+    zoomMap(1.25, center.x, center.y);
   });
+
   document.getElementById("mapZoomOut").addEventListener("click", () => {
-    const viewBox = svg.viewBox.baseVal;
-    zoomMap(1 / 1.25, viewBox.width / 2, viewBox.height / 2);
+    const center = getCenterPoint(svg);
+    zoomMap(1 / 1.25, center.x, center.y);
   });
+
   document.getElementById("mapReset").addEventListener("click", resetMapView);
 }
 
@@ -820,7 +775,6 @@ window.addEventListener("load", setupMapInteraction);
 
 document.getElementById("copyBtn").addEventListener("click", async () => {
   const text = document.getElementById("eew").textContent;
-
   try {
     await navigator.clipboard.writeText(text);
     alert("コピー完了");
@@ -829,31 +783,22 @@ document.getElementById("copyBtn").addEventListener("click", async () => {
   }
 });
 
-// ラジオ
 document.querySelectorAll('input[name="mode"]').forEach(radio => {
   radio.addEventListener("change", update);
 });
-
-// セレクト
 document.getElementById("areaSelect").addEventListener("change", update);
 document.getElementById("statusFormat").addEventListener("change", update);
 
 function update() {
   setNowTime();
-
-  // レベル取得
   const value = document.querySelector('input[name="mode"]:checked').value;
   let mode;
   if (value === "all") mode = 2;
   else if (value === "keihou") mode = 3;
   else if (value === "kiken_keihou") mode = 4;
 
-  // 地域取得
-  const area = document.getElementById("areaSelect")
-    .selectedOptions[0].textContent.trim();
+  const area = document.getElementById("areaSelect").selectedOptions[0].textContent.trim();
   const statusFormat = document.getElementById("statusFormat").checked;
-
-  // まとめて渡す
   main(mode, area, statusFormat);
 }
 </script>
