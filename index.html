@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>[新式]気象警報ビューアーv1.1.13</title>
+<title>[新式]気象警報ビューアーv1.1.12</title>
 <style>
 body {
   font-family:"Yu Gothic","YuGothic","メイリオ",sans-serif;
@@ -201,9 +201,8 @@ body {
 const JMA_BASE = "https://www.jma.go.jp/bosai";
 const AREA_JSON_URL = `${JMA_BASE}/common/const/area.json`;
 const WARNING_R8_BASE_URL = `${JMA_BASE}/warning/data/r8`;
-
-// 【変更点】気象庁の10分割GeoJSONの代わりに、外部の軽量化済み全国一括GeoJSONを使用
-const SINGLE_GEOJSON_URL = "https://raw.githubusercontent.com/Kanahiro/jma-geojson/master/bousai/class20s.geojson";
+const GEOJSON_BASE_URL = `${JMA_BASE}/common/const/geojson`;
+const GEOJSON_INDEXES = [0,1,2,3,4,5,6,7,8,9];
 
 const regionCodeByName = {
   "宗谷地方": "011000",
@@ -524,13 +523,15 @@ async function getAreaData() {
   return areaDataCache;
 }
 
-// 【変更点】1本化された外部GeoJSONを取得するロジックに変更
 async function getGeoJsonFeatures() {
   if (!geoJsonFeatureCache) {
-    const res = await fetch(SINGLE_GEOJSON_URL, {cache:"force-cache"});
-    if (!res.ok) throw new Error(`地図データの取得に失敗しました: ${res.status}`);
-    const json = await res.json();
-    geoJsonFeatureCache = json.features || [];
+    const results = await Promise.all(GEOJSON_INDEXES.map(async index => {
+      const res = await fetch(`${GEOJSON_BASE_URL}/class20s_${index}.json`, {cache:"force-cache"});
+      if (!res.ok) return [];
+      const json = await res.json();
+      return json.features || [];
+    }));
+    geoJsonFeatureCache = results.flat();
   }
   return geoJsonFeatureCache;
 }
@@ -577,12 +578,7 @@ async function renderWarningMap(mapInfo, taisho_chiiki) {
     const features = await getGeoJsonFeatures();
     const targetCityCodes = getTargetCityCodes(mapInfo.areaData, mapInfo.targetCodes);
     const targetSet = new Set(targetCityCodes);
-    
-    // 【変更点】外部GeoJSONのプロパティ構造（code または code_chihou 等）に合わせて安全にフィルタリング
-    const targetFeatures = features.filter(feature => {
-      const code = feature.properties?.code || feature.properties?.N03_007; // 互換性担保
-      return targetSet.has(code);
-    });
+    const targetFeatures = features.filter(feature => targetSet.has(feature.properties?.code));
 
     if (targetFeatures.length === 0) {
       note.textContent = "表示できる地図データがありません。";
@@ -622,10 +618,8 @@ function isCityInTargetRegion(areaData, cityCode, regionSet) {
 
 function drawGeoJsonSvg(svg, features, cityWarnLevels) {
   const bounds = getFeatureBounds(features);
-  
-  // 初期ロード時のサイズゼロ回避のフォールバックを追加
-  const width = Math.max(svg.clientWidth || svg.getBoundingClientRect().width || 640, 320);
-  const height = Math.max(svg.clientHeight || svg.getBoundingClientRect().height || 420, 260);
+  const width = Math.max(svg.clientWidth || 640, 320);
+  const height = Math.max(svg.clientHeight || 420, 260);
   const padding = 12;
   const scaleX = (width - padding * 2) / Math.max(bounds.maxLon - bounds.minLon, 0.0001);
   const scaleY = (height - padding * 2) / Math.max(bounds.maxLat - bounds.minLat, 0.0001);
@@ -648,13 +642,13 @@ function drawGeoJsonSvg(svg, features, cityWarnLevels) {
     path.setAttribute("d", geometryToPath(feature.geometry, bounds, scale, offsetX, offsetY));
     path.setAttribute("class", "mapArea");
 
-    const code = feature.properties?.code || feature.properties?.N03_007;
+    const code = feature.properties?.code;
     const warning = cityWarnLevels[code];
     path.setAttribute("fill", getMapColor(warning?.level));
     path.setAttribute("data-code", code || "");
 
     const label = document.createElementNS("http://www.w3.org/2000/svg", "title");
-    label.textContent = `${feature.properties?.name || feature.properties?.N03_004 || code}: ${warning?.name || "発表なし"}`;
+    label.textContent = `${feature.properties?.name || code}: ${warning?.name || "発表なし"}`;
     path.appendChild(label);
     layer.appendChild(path);
   }
