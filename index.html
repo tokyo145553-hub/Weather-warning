@@ -1,30 +1,9 @@
-提示していただいたコードを検証したところ、地図の一部（特に境界をまたぐ地域や広範囲を表示した際など）が消えてしまう原因は、主に「表示対象となるGeoJSONのFeatureをフィルタリングするロジック」**と、**「境界ボックス（Bounds）の算出ロジック」にあります。
-
-全国、または特定の地方を選択した際に、気象庁の親組織コード（Parent Code）の階層を遡るチェックが最大8回（`for (let i = 0; i < 8; i++)`）で途切れてしまい、正しく親子関係が紐付けられずに「対象外」として描画から漏れてしまうケースが発生しています。また、一部のFeatureに `coordinates` が空、あるいは想定外のネスト構造が含まれている場合、描画処理（`geometryToPath`）がスキップされたりエラー落ちしたりすることがあります。
-
-これらの問題を解決し、「選択した地域が絶対に消えないように堅牢化」した修正版のソースコードを作成しました。
-
-### 修正のポイント
-
-1. **地域判定ロジック（`isCityInTargetRegion`）の強化:** 無限ループを防ぎつつ、`parent` が存在する限り確実に最上流（気象庁のブロック階層や全国）まで遡れるように、安全な `while` ループに変更しました。これでパース漏れを防ぎます。
-2. **`geometryToPath` の例外処理を追加:**
-マルチポリゴン（`MultiPolygon`）と通常のポリゴン（`Polygon`）の構造判定をより厳格にし、配列のネストが深くてもスキップされずに全ての座標がSVGパス（`path`）として正確に生成されるように修正しました。
-3. **Bounds（境界）計算の安全化:**
-座標が万が一正しく取得できない Feature が混ざっていても、`Infinity` のまま計算が進んで画面外に吹き飛ぶのを防ぐガードコードを追加しました。
-
----
-
-### 修正済みフルコード
-
-そのままコピー＆ペーストしてご利用いただけます。
-
-```html
 <!DOCTYPE html>
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>[新式]気象警報ビューアーv1.1.13</title>
+<title>[新式]気象警報ビューアーv1.1.12</title>
 <style>
 body {
   font-family:"Yu Gothic","YuGothic","メイリオ",sans-serif;
@@ -621,20 +600,16 @@ function getTargetCityCodes(areaData, regionCodes) {
 
 function isCityInTargetRegion(areaData, cityCode, regionSet) {
   let code = cityCode;
-  const visited = new Set(); // 無限ループ防止用ガード
 
-  while (code && !visited.has(code)) {
+  for (let i = 0; i < 8; i++) {
     if (regionSet.has(code)) return true;
-    visited.add(code);
-
     const node =
       areaData.class20s?.[code] ||
       areaData.class15s?.[code] ||
       areaData.class10s?.[code] ||
       areaData.offices?.[code];
-    
     const parent = node?.parent;
-    if (!parent || parent === code) break;
+    if (!parent || parent === code) return false;
     code = parent;
   }
 
@@ -643,13 +618,6 @@ function isCityInTargetRegion(areaData, cityCode, regionSet) {
 
 function drawGeoJsonSvg(svg, features, cityWarnLevels) {
   const bounds = getFeatureBounds(features);
-  
-  // バウンズが不正な場合のフォールバック（日本全体が入る大まかな座標）
-  if (bounds.minLon === Infinity || bounds.maxLon === -Infinity) {
-    bounds.minLon = 122.0; bounds.maxLon = 154.0;
-    bounds.minLat = 20.0; bounds.maxLat = 46.0;
-  }
-
   const width = Math.max(svg.clientWidth || 640, 320);
   const height = Math.max(svg.clientHeight || 420, 260);
   const padding = 12;
@@ -670,12 +638,8 @@ function drawGeoJsonSvg(svg, features, cityWarnLevels) {
   svg.appendChild(layer);
 
   for (const feature of features) {
-    if (!feature.geometry) continue;
-    const pathStr = geometryToPath(feature.geometry, bounds, scale, offsetX, offsetY);
-    if (!pathStr) continue; // 座標パスが空ならスキップ
-
     const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    path.setAttribute("d", pathStr);
+    path.setAttribute("d", geometryToPath(feature.geometry, bounds, scale, offsetX, offsetY));
     path.setAttribute("class", "mapArea");
 
     const code = feature.properties?.code;
@@ -695,39 +659,31 @@ function drawGeoJsonSvg(svg, features, cityWarnLevels) {
 function getFeatureBounds(features) {
   const bounds = {minLon: Infinity, maxLon: -Infinity, minLat: Infinity, maxLat: -Infinity};
   for (const feature of features) {
-    if (!feature.geometry || !feature.geometry.coordinates) continue;
-    walkCoordinates(feature.geometry.coordinates, point => {
+    walkCoordinates(feature.geometry?.coordinates, point => {
       const lon = point[0];
       const lat = point[1];
-      if (typeof lon === "number" && typeof lat === "number") {
-        if (lon < bounds.minLon) bounds.minLon = lon;
-        if (lon > bounds.maxLon) bounds.maxLon = lon;
-        if (lat < bounds.minLat) bounds.minLat = lat;
-        if (lat > bounds.maxLat) bounds.maxLat = lat;
-      }
+      if (lon < bounds.minLon) bounds.minLon = lon;
+      if (lon > bounds.maxLon) bounds.maxLon = lon;
+      if (lat < bounds.minLat) bounds.minLat = lat;
+      if (lat > bounds.maxLat) bounds.maxLat = lat;
     });
   }
   return bounds;
 }
 
 function geometryToPath(geometry, bounds, scale, offsetX, offsetY) {
-  if (!geometry || !geometry.coordinates) return "";
-  
-  // Polygon型かMultiPolygon型かを判別して正規化
-  const polygons = geometry.type === "Polygon" ? [geometry.coordinates] : 
-                   geometry.type === "MultiPolygon" ? geometry.coordinates : [];
+  if (!geometry) return "";
+  const polygons = geometry.type === "Polygon" ? [geometry.coordinates] : geometry.coordinates;
   let d = "";
 
-  for (const polygon of polygons) {
+  for (const polygon of polygons || []) {
     for (const ring of polygon) {
-      if (!Array.isArray(ring) || ring.length === 0) continue;
       ring.forEach((point, index) => {
-        if (!point || typeof point[0] !== "number") return;
         const x = offsetX + (point[0] - bounds.minLon) * scale;
         const y = offsetY + (bounds.maxLat - point[1]) * scale;
         d += `${index === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`;
       });
-      if (d.length > 0) d += "Z";
+      d += "Z";
     }
   }
 
@@ -864,30 +820,33 @@ document.getElementById("copyBtn").addEventListener("click", async () => {
   }
 });
 
+// ラジオ
 document.querySelectorAll('input[name="mode"]').forEach(radio => {
   radio.addEventListener("change", update);
 });
 
+// セレクト
 document.getElementById("areaSelect").addEventListener("change", update);
 document.getElementById("statusFormat").addEventListener("change", update);
 
 function update() {
   setNowTime();
 
+  // レベル取得
   const value = document.querySelector('input[name="mode"]:checked').value;
   let mode;
   if (value === "all") mode = 2;
   else if (value === "keihou") mode = 3;
   else if (value === "kiken_keihou") mode = 4;
 
+  // 地域取得
   const area = document.getElementById("areaSelect")
     .selectedOptions[0].textContent.trim();
   const statusFormat = document.getElementById("statusFormat").checked;
 
+  // まとめて渡す
   main(mode, area, statusFormat);
 }
 </script>
 </body>
 </html>
-
-```
