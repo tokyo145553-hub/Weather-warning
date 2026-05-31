@@ -534,14 +534,26 @@ async function getAreaData() {
 
 async function getGeoJsonFeatures() {
   if (!geoJsonFeatureCache) {
-    const results = await Promise.all(GEOJSON_INDEXES.map(async index => {
-      const res = await fetch(`${GEOJSON_BASE_URL}/class20s_${index}.json`, {cache:"force-cache"});
-      if (!res.ok) return [];
-      const json = await res.json();
-      return json.features || [];
-    }));
+    const results = await Promise.all(
+      GEOJSON_INDEXES.map(async (index) => {
+        const res = await fetch(
+          `${GEOJSON_BASE_URL}/class20s_${index}.json`,
+          { cache: "force-cache" }
+        );
+
+        if (!res.ok) {
+          console.warn("GeoJSON missing:", index);
+          return [];
+        }
+
+        const json = await res.json();
+        return json.features || [];
+      })
+    );
+
     geoJsonFeatureCache = results.flat();
   }
+
   return geoJsonFeatureCache;
 }
 
@@ -609,16 +621,23 @@ function getTargetCityCodes(areaData, regionCodes) {
 
 function isCityInTargetRegion(areaData, cityCode, regionSet) {
   let code = cityCode;
+  const visited = new Set();
 
-  for (let i = 0; i < 8; i++) {
+  while (code && !visited.has(code)) {
+    visited.add(code);
+
     if (regionSet.has(code)) return true;
+
     const node =
       areaData.class20s?.[code] ||
       areaData.class15s?.[code] ||
       areaData.class10s?.[code] ||
       areaData.offices?.[code];
+
     const parent = node?.parent;
-    if (!parent || parent === code) return false;
+
+    if (!parent || parent === code) break;
+
     code = parent;
   }
 
