@@ -92,19 +92,17 @@ body {
 </style>
 </head>
 <body>
-
 <div id="notice">
 ※地図はベータ版のため一部が表示されない事があります。
 </div>
-
 <div id="updateTime">
-取得日時: ----/--/-- --:--:-- 
+取得日時: ----/--/-- --:--:--
 </div>
-
 <button id="copyBtn">
-&nbsp;　　　本文をコピー　　　&nbsp;
+&nbsp;
+　　　本文をコピー　　　
+&nbsp;
 </button>
-
 <select id="areaSelect">
   <option selected>全国</option>
   <optgroup label="北海道地方">
@@ -198,11 +196,11 @@ body {
 <div id="mapPanel">
   <div id="mapTitle">地図表示</div>
   <div id="mapControls">
-    <button id="mapZoomIn">＋</button>
-    <button id="mapZoomOut">－</button>
-    <button id="mapReset">⟲</button>
+    <button id="mapZoomIn" type="button" title="拡大">＋</button>
+    <button id="mapZoomOut" type="button" title="縮小">－</button>
+    <button id="mapReset" type="button" title="位置を戻す">⟲</button>
   </div>
-  <svg id="warningMap"></svg>
+  <svg id="warningMap" role="img" aria-label="気象警報・注意報地図"></svg>
   <div id="mapNote">地図を読み込み中...</div>
 </div>
 
@@ -278,95 +276,13 @@ const regionCodeByName = {
 
 let areaDataCache = null;
 let geoJsonFeatureCache = null;
-
-/* =========================
-   ★地図部分だけ最低限修正
-   ========================= */
-
-async function getGeoJsonFeatures() {
-  if (!geoJsonFeatureCache) {
-    const results = await Promise.all(
-      GEOJSON_INDEXES.map(async index => {
-        try {
-          const res = await fetch(`${GEOJSON_BASE_URL}/class20s_${index}.json`, {cache:"force-cache"});
-          if (!res.ok) return [];
-          const json = await res.json();
-          return json.features || [];
-        } catch (e) {
-          return [];
-        }
-      })
-    );
-    geoJsonFeatureCache = results.flat();
-  }
-  return geoJsonFeatureCache;
-}
-
-async function renderWarningMap(mapInfo, taisho_chiiki) {
-  const svg = document.getElementById("warningMap");
-  const note = document.getElementById("mapNote");
-  const title = document.getElementById("mapTitle");
-
-  svg.innerHTML = "";
-  title.textContent = `地図表示: ${taisho_chiiki}`;
-  note.textContent = "地図を描画中...";
-
-  try {
-    const features = await getGeoJsonFeatures();
-
-    if (!features || features.length === 0) {
-      note.textContent = "地図データなし";
-      return;
-    }
-
-    const width = svg.clientWidth || 600;
-    const height = svg.clientHeight || 400;
-
-    svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
-
-    const layer = document.createElementNS("http://www.w3.org/2000/svg", "g");
-    svg.appendChild(layer);
-
-    for (const feature of features) {
-      if (!feature.geometry) continue;
-
-      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-
-      let d = "";
-
-      const polys = feature.geometry.coordinates;
-      for (const poly of polys) {
-        for (const ring of poly) {
-          ring.forEach((p, i) => {
-            const x = (p[0] + 180) * (width / 360);
-            const y = (90 - p[1]) * (height / 180);
-            d += (i === 0 ? "M" : "L") + x + "," + y;
-          });
-          d += "Z";
-        }
-      }
-
-      path.setAttribute("d", d);
-      path.setAttribute("fill", "#eee");
-      path.setAttribute("stroke", "#666");
-      path.setAttribute("stroke-width", "0.3");
-
-      layer.appendChild(path);
-    }
-
-    note.textContent = "地図表示完了";
-
-  } catch (e) {
-    note.textContent = "地図エラー: " + e.message;
-  }
-}
-
-/* =========================
-   ↓↓↓ここから下は元コードそのまま（完全維持）↓↓↓
-   ========================= */
+let latestUpdateId = 0;
+let mapView = {scale: 1, x: 0, y: 0};
+let mapDrag = {active: false, startX: 0, startY: 0, originX: 0, originY: 0};
 
 function setNowTime() {
   const now = new Date();
+
   const YYYY = now.getFullYear();
   const MM = String(now.getMonth() + 1).padStart(2, '0');
   const dd = String(now.getDate()).padStart(2, '0');
@@ -380,27 +296,564 @@ function setNowTime() {
 
 setNowTime();
 
-window.addEventListener("load", update);
+async function main(mode=2,taisho_chiiki="全国",statusFormat=false) {
+  const updateId = ++latestUpdateId;
+  try {
+  const warnArea = {
+  "00":{name:"解除",level:null},
+  "02":{name:"暴風雪警報",level:3},
+  "03":{name:"レベル３大雨警報",level:3},
+  "04":{name:"洪水警報",level:3},
+  "05":{name:"暴風警報",level:3},
+  "06":{name:"大雪警報",level:3},
+  "07":{name:"波浪警報",level:3},
+  "08":{name:"レベル３高潮警報",level:3},
+  "09":{name:"レベル３土砂災害警報",level:3},
+  "10":{name:"レベル２大雨注意報",level:2},
+  "12":{name:"大雪注意報",level:2},
+  "13":{name:"風雪注意報",level:2},
+  "14":{name:"雷注意報",level:2},
+  "15":{name:"強風注意報",level:2},
+  "16":{name:"波浪注意報",level:2},
+  "17":{name:"融雪注意報",level:2},
+  "18":{name:"洪水注意報",level:2},
+  "19":{name:"レベル２高潮注意報",level:2},
+  "20":{name:"濃霧注意報",level:2},
+  "21":{name:"乾燥注意報",level:2},
+  "22":{name:"なだれ注意報",level:2},
+  "23":{name:"低温注意報",level:2},
+  "24":{name:"霜注意報",level:2},
+  "25":{name:"着氷注意報",level:2},
+  "26":{name:"着雪注意報",level:2},
+  "27":{name:"その他の注意報",level:2},
+  "29":{name:"レベル２土砂災害注意報",level:2},
+  "32":{name:"暴風雪特別警報",level:5},
+  "33":{name:"レベル５大雨特別警報",level:5},
+  "35":{name:"暴風特別警報",level:5},
+  "36":{name:"大雪特別警報",level:5},
+  "37":{name:"波浪特別警報",level:5},
+  "38":{name:"レベル５高潮特別警報",level:5},
+  "39":{name:"レベル５土砂災害特別警報",level:5},
+  "42":{name:"未定・予約",level:null},
+  "43":{name:"レベル４大雨危険警報",level:4},
+  "45":{name:"未定・予約",level:null},
+  "46":{name:"未定・予約",level:null},
+  "47":{name:"未定・予約",level:null},
+  "48":{name:"レベル４高潮危険警報",level:4},
+  "49":{name:"レベル４土砂災害危険警報",level:4}
+};
 
+    document.getElementById("eew").textContent = "読み込み中...";
+
+    const {warnData,regionReportDT,mapInfo} = await getCityWarningsByArea(warnArea,taisho_chiiki);
+    if (updateId !== latestUpdateId) return;
+    const data = warnData;
+
+    const dt = new Date(regionReportDT || data.reportDatetime || Date.now());
+    const MM = String(dt.getMonth() + 1).padStart(2, '0');
+    const dd = String(dt.getDate()).padStart(2, '0');
+    const HH = String(dt.getHours()).padStart(2, '0');
+    const mm = String(dt.getMinutes()).padStart(2, '0');
+
+    let titleKind = "";
+    if (mode===2) titleKind = "気象警報・注意報";
+    else if (mode===3) titleKind = "気象警報";
+    else if (mode===4) titleKind = "気象危険/特別警報";
+    let titleArea1 = "";  let titleArea2 = "";
+    if (taisho_chiiki==="全国") titleArea1 = "全国の";
+    else titleArea2 = "\n"+taisho_chiiki;
+
+    let text = "";
+    if (statusFormat) {
+      text = `《${titleKind}》${titleArea2}\n${dd}日${HH}時${mm}分 ${data.publishingOffice || "気象庁"}発表`;
+    } else {
+      text = `《${titleArea1}${titleKind}》${titleArea2}\n${MM}月${dd}日${HH}時${mm}分`;
+      if (regionReportDT) text += " 発表";
+      else text += " 更新";
+    }
+    let count = 0;
+
+    for (const warnName in data.warnInfo) {
+      const areas = data.warnInfo[warnName];
+      if (Object.keys(areas).length === 0) continue;
+
+      const info = Object.values(warnArea).find(w => w.name === warnName);
+      if (!info || info.level < mode) continue;
+
+      let block = "";
+      let hasArea = false;
+
+      for (const areaName in areas) {
+        if (taisho_chiiki !== "全国" && areaName !== taisho_chiiki) continue;
+
+        const cities = areas[areaName];
+        if (!cities || cities.length === 0) continue;
+
+        if (!hasArea) {
+          const coloredName = `${getWarnColor(info.level)}${warnName}${getWarnColor(info.level)}`;
+          block += `\n\n${coloredName}`;
+          hasArea = true;
+          count++;
+        }
+
+        if (statusFormat) {
+          const statusGroups = data.statusInfo?.[warnName]?.[areaName] || {"発表": cities};
+          for (const status in statusGroups) {
+            if (taisho_chiiki === "全国") block += `\n【${areaName} ${status}】`;
+            else block += `\n【${status}】`;
+            block += statusGroups[status].join("　");
+          }
+        } else {
+          block += `\n【${areaName}】\n`;
+          block += cities.join("　");
+        }
+      }
+
+      text += block;
+    }
+
+    if (count===0) {
+      if (mode===2) text += "\n\n発表中の気象警報・注意報等はありません。";
+      else if (mode===3) text += "\n\n発表中の気象警報はありません。";
+      else if (mode===4) text += "\n\n発表中の危険警報・特別警報はありません。";
+    }
+
+    document.getElementById("eew").textContent = text.trim();
+    renderWarningMap(mapInfo, taisho_chiiki);
+  } catch(e) {
+    if (updateId !== latestUpdateId) return;
+    document.getElementById("eew").textContent = "ERROR\n" + (e.message || e);
+    document.getElementById("mapNote").textContent = "地図表示でエラーが発生しました。";
+  }
+}
+
+async function getCityWarningsByArea(warnArea,taisho_chiiki="全国") {
+  const areaData = await getAreaData();
+  const targetCodes = getTargetRegionCodes(taisho_chiiki);
+  if (targetCodes.length === 0) throw new Error(`未対応の地域です: ${taisho_chiiki}`);
+
+  const warnByTypeAndArea = createWarnInfoTemplate(warnArea);
+  const statusInfo = createWarnInfoTemplate(warnArea);
+  const cityWarnLevels = {};
+  let reportDatetime = "";
+  let regionReportDT = "";
+  let publishingOffice = "";
+
+  const dataJson = await fetchR8WarningData(targetCodes);
+
+  for (const item of dataJson) {
+    if (!item || !item.warning) continue;
+    if (reportDatetime==="") {
+      reportDatetime = item.reportDatetime;
+      publishingOffice = item.publishingOffice || "";
+    } else if (item.reportDatetime > reportDatetime) {
+      reportDatetime = item.reportDatetime;
+      publishingOffice = item.publishingOffice || publishingOffice;
+    }
+
+    const largeAreaCode = item.regionCode;
+    const largeAreaName = getRegionName(largeAreaCode);
+
+    if (largeAreaName && taisho_chiiki===largeAreaName) {
+      if (!regionReportDT || item.reportDatetime > regionReportDT) regionReportDT = item.reportDatetime || "NaN";
+    }
+
+    for (const area of item.warning.class20Items || []) {
+      const cityInfo = areaData.class20s?.[area.areaCode];
+      if (!cityInfo) continue;
+      const cityName = cityInfo.name;
+
+      for (const w of area.kinds || []) {
+        if (!w.code || w.status === "解除") continue;
+
+        const info = warnArea[w.code];
+        if (!info) continue;
+
+        const warnName = info.name;
+        if (!warnName || !warnByTypeAndArea[warnName]) continue;
+
+        if (!warnByTypeAndArea[warnName][largeAreaName]) {
+          warnByTypeAndArea[warnName][largeAreaName] = [];
+        }
+
+        if (!warnByTypeAndArea[warnName][largeAreaName].includes(cityName)) {
+          warnByTypeAndArea[warnName][largeAreaName].push(cityName);
+        }
+
+        const status = w.status || "発表";
+        if (!statusInfo[warnName][largeAreaName]) statusInfo[warnName][largeAreaName] = {};
+        if (!statusInfo[warnName][largeAreaName][status]) statusInfo[warnName][largeAreaName][status] = [];
+        if (!statusInfo[warnName][largeAreaName][status].includes(cityName)) {
+          statusInfo[warnName][largeAreaName][status].push(cityName);
+        }
+
+        const currentLevel = cityWarnLevels[area.areaCode]?.level || 0;
+        if ((info.level || 0) > currentLevel) {
+          cityWarnLevels[area.areaCode] = {
+            level: info.level,
+            name: warnName,
+            cityName
+          };
+        }
+      }
+    }
+  }
+
+  const warnData = {
+    "reportDatetime": reportDatetime,
+    "publishingOffice": publishingOffice,
+    "warnInfo": warnByTypeAndArea,
+    "statusInfo": statusInfo
+  };
+  const mapInfo = {
+    targetCodes,
+    cityWarnLevels,
+    areaData
+  };
+
+  return {warnData,regionReportDT,mapInfo};
+}
+
+function createWarnInfoTemplate(warnArea) {
+  const warnByTypeAndArea = {};
+  for (const info of Object.values(warnArea)) {
+    if (!info.name || info.name === "解除" || info.name === "未定・予約") continue;
+    warnByTypeAndArea[info.name] = {};
+  }
+  return warnByTypeAndArea;
+}
+
+async function getAreaData() {
+  if (!areaDataCache) {
+    const res = await fetch(AREA_JSON_URL, {cache:"no-store"});
+    if (!res.ok) throw new Error(`地域定義JSONの取得に失敗しました: ${res.status}`);
+    areaDataCache = await res.json();
+  }
+  return areaDataCache;
+}
+
+async function getGeoJsonFeatures() {
+  if (!geoJsonFeatureCache) {
+    const results = await Promise.all(GEOJSON_INDEXES.map(async index => {
+      const res = await fetch(`${GEOJSON_BASE_URL}/class20s_${index}.json`, {cache:"force-cache"});
+      if (!res.ok) return [];
+      const json = await res.json();
+      return json.features || [];
+    }));
+    geoJsonFeatureCache = results.flat();
+  }
+  return geoJsonFeatureCache;
+}
+
+function getTargetRegionCodes(taisho_chiiki) {
+  if (taisho_chiiki === "全国") return Object.values(regionCodeByName);
+  const code = regionCodeByName[taisho_chiiki];
+  return code ? [code] : [];
+}
+
+function getRegionName(regionCode) {
+  for (const name in regionCodeByName) {
+    if (regionCodeByName[name] === regionCode) return name;
+  }
+  return regionCode;
+}
+
+async function fetchR8WarningData(regionCodes) {
+  const results = await Promise.all(regionCodes.map(async regionCode => {
+    const url = `${WARNING_R8_BASE_URL}/${regionCode}.json`;
+    try {
+      const res = await fetch(url, {cache:"no-store"});
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      const reports = await res.json();
+      return reports.map(report => ({...report, regionCode}));
+    } catch(e) {
+      console.warn(`警報JSON取得失敗: ${url}`, e);
+      return [];
+    }
+  }));
+
+  return results.flat();
+}
+
+async function renderWarningMap(mapInfo, taisho_chiiki) {
+  const svg = document.getElementById("warningMap");
+  const note = document.getElementById("mapNote");
+  const title = document.getElementById("mapTitle");
+  svg.textContent = "";
+  title.textContent = `地図表示: ${taisho_chiiki}`;
+  note.textContent = "地図を描画中...";
+
+  try {
+    const features = await getGeoJsonFeatures();
+    const targetCityCodes = getTargetCityCodes(mapInfo.areaData, mapInfo.targetCodes);
+    const targetSet = new Set(targetCityCodes);
+    const targetFeatures = features.filter(feature => targetSet.has(feature.properties?.code));
+
+    if (targetFeatures.length === 0) {
+      note.textContent = "表示できる地図データがありません。";
+      return;
+    }
+
+    drawGeoJsonSvg(svg, targetFeatures, mapInfo.cityWarnLevels);
+    const warnedCount = Object.keys(mapInfo.cityWarnLevels).filter(code => targetSet.has(code)).length;
+    note.textContent = `表示区域: ${targetFeatures.length}件 / 発表中: ${warnedCount}件`;
+  } catch(e) {
+    note.textContent = `地図データを取得できませんでした: ${e.message || e}`;
+  }
+}
+
+function getTargetCityCodes(areaData, regionCodes) {
+  const regionSet = new Set(regionCodes);
+  return Object.keys(areaData.class20s || {}).filter(code => isCityInTargetRegion(areaData, code, regionSet));
+}
+
+function isCityInTargetRegion(areaData, cityCode, regionSet) {
+  let code = cityCode;
+
+  for (let i = 0; i < 8; i++) {
+    if (regionSet.has(code)) return true;
+    const node =
+      areaData.class20s?.[code] ||
+      areaData.class15s?.[code] ||
+      areaData.class10s?.[code] ||
+      areaData.offices?.[code];
+    const parent = node?.parent;
+    if (!parent || parent === code) return false;
+    code = parent;
+  }
+
+  return false;
+}
+
+function drawGeoJsonSvg(svg, features, cityWarnLevels) {
+  const bounds = getFeatureBounds(features);
+  const width = Math.max(svg.clientWidth || 640, 320);
+  const height = Math.max(svg.clientHeight || 420, 260);
+  const padding = 12;
+  const scaleX = (width - padding * 2) / Math.max(bounds.maxLon - bounds.minLon, 0.0001);
+  const scaleY = (height - padding * 2) / Math.max(bounds.maxLat - bounds.minLat, 0.0001);
+  const scale = Math.min(scaleX, scaleY);
+  const mapWidth = (bounds.maxLon - bounds.minLon) * scale;
+  const mapHeight = (bounds.maxLat - bounds.minLat) * scale;
+  const offsetX = (width - mapWidth) / 2;
+  const offsetY = (height - mapHeight) / 2;
+
+  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  svg.textContent = "";
+  mapView = {scale: 1, x: 0, y: 0};
+
+  const layer = document.createElementNS("http://www.w3.org/2000/svg", "g");
+  layer.setAttribute("id", "mapLayer");
+  svg.appendChild(layer);
+
+  for (const feature of features) {
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", geometryToPath(feature.geometry, bounds, scale, offsetX, offsetY));
+    path.setAttribute("class", "mapArea");
+
+    const code = feature.properties?.code;
+    const warning = cityWarnLevels[code];
+    path.setAttribute("fill", getMapColor(warning?.level));
+    path.setAttribute("data-code", code || "");
+
+    const label = document.createElementNS("http://www.w3.org/2000/svg", "title");
+    label.textContent = `${feature.properties?.name || code}: ${warning?.name || "発表なし"}`;
+    path.appendChild(label);
+    layer.appendChild(path);
+  }
+
+  applyMapTransform();
+}
+
+function getFeatureBounds(features) {
+  const bounds = {minLon: Infinity, maxLon: -Infinity, minLat: Infinity, maxLat: -Infinity};
+  for (const feature of features) {
+    walkCoordinates(feature.geometry?.coordinates, point => {
+      const lon = point[0];
+      const lat = point[1];
+      if (lon < bounds.minLon) bounds.minLon = lon;
+      if (lon > bounds.maxLon) bounds.maxLon = lon;
+      if (lat < bounds.minLat) bounds.minLat = lat;
+      if (lat > bounds.maxLat) bounds.maxLat = lat;
+    });
+  }
+  return bounds;
+}
+
+function geometryToPath(geometry, bounds, scale, offsetX, offsetY) {
+  if (!geometry) return "";
+  const polygons = geometry.type === "Polygon" ? [geometry.coordinates] : geometry.coordinates;
+  let d = "";
+
+  for (const polygon of polygons || []) {
+    for (const ring of polygon) {
+      ring.forEach((point, index) => {
+        const x = offsetX + (point[0] - bounds.minLon) * scale;
+        const y = offsetY + (bounds.maxLat - point[1]) * scale;
+        d += `${index === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`;
+      });
+      d += "Z";
+    }
+  }
+
+  return d;
+}
+
+function walkCoordinates(value, callback) {
+  if (!Array.isArray(value)) return;
+  if (typeof value[0] === "number" && typeof value[1] === "number") {
+    callback(value);
+    return;
+  }
+  for (const child of value) walkCoordinates(child, callback);
+}
+
+function getMapColor(level) {
+  switch (level) {
+    case 2: return "#ffd94a";
+    case 3: return "#f04b4b";
+    case 4: return "#9b5de5";
+    case 5: return "#202020";
+    default: return "#f7f7f7";
+  }
+}
+
+function applyMapTransform() {
+  const layer = document.getElementById("mapLayer");
+  if (!layer) return;
+  layer.setAttribute("transform", `translate(${mapView.x.toFixed(2)} ${mapView.y.toFixed(2)}) scale(${mapView.scale.toFixed(4)})`);
+}
+
+function zoomMap(factor, centerX, centerY) {
+  const oldScale = mapView.scale;
+  const newScale = Math.min(16, Math.max(0.6, oldScale * factor));
+  if (newScale === oldScale) return;
+
+  mapView.x = centerX - (centerX - mapView.x) * (newScale / oldScale);
+  mapView.y = centerY - (centerY - mapView.y) * (newScale / oldScale);
+  mapView.scale = newScale;
+  applyMapTransform();
+}
+
+function resetMapView() {
+  mapView = {scale: 1, x: 0, y: 0};
+  applyMapTransform();
+}
+
+function getSvgPoint(svg, event) {
+  const rect = svg.getBoundingClientRect();
+  const viewBox = svg.viewBox.baseVal;
+  return {
+    x: (event.clientX - rect.left) * (viewBox.width / rect.width),
+    y: (event.clientY - rect.top) * (viewBox.height / rect.height)
+  };
+}
+
+function setupMapInteraction() {
+  const svg = document.getElementById("warningMap");
+
+  svg.addEventListener("wheel", event => {
+    event.preventDefault();
+    const point = getSvgPoint(svg, event);
+    zoomMap(event.deltaY < 0 ? 1.2 : 1 / 1.2, point.x, point.y);
+  }, {passive: false});
+
+  svg.addEventListener("pointerdown", event => {
+    svg.setPointerCapture(event.pointerId);
+    const point = getSvgPoint(svg, event);
+    mapDrag = {
+      active: true,
+      startX: point.x,
+      startY: point.y,
+      originX: mapView.x,
+      originY: mapView.y
+    };
+    svg.classList.add("dragging");
+  });
+
+  svg.addEventListener("pointermove", event => {
+    if (!mapDrag.active) return;
+    const point = getSvgPoint(svg, event);
+    mapView.x = mapDrag.originX + (point.x - mapDrag.startX);
+    mapView.y = mapDrag.originY + (point.y - mapDrag.startY);
+    applyMapTransform();
+  });
+
+  const stopDrag = event => {
+    if (event.pointerId !== undefined && svg.hasPointerCapture(event.pointerId)) {
+      svg.releasePointerCapture(event.pointerId);
+    }
+    mapDrag.active = false;
+    svg.classList.remove("dragging");
+  };
+
+  svg.addEventListener("pointerup", stopDrag);
+  svg.addEventListener("pointercancel", stopDrag);
+  svg.addEventListener("pointerleave", () => {
+    mapDrag.active = false;
+    svg.classList.remove("dragging");
+  });
+
+  document.getElementById("mapZoomIn").addEventListener("click", () => {
+    const viewBox = svg.viewBox.baseVal;
+    zoomMap(1.25, viewBox.width / 2, viewBox.height / 2);
+  });
+  document.getElementById("mapZoomOut").addEventListener("click", () => {
+    const viewBox = svg.viewBox.baseVal;
+    zoomMap(1 / 1.25, viewBox.width / 2, viewBox.height / 2);
+  });
+  document.getElementById("mapReset").addEventListener("click", resetMapView);
+}
+
+function getWarnColor(level) {
+  switch (level) {
+    case 2: return "🟨";
+    case 3: return "🟥";
+    case 4: return "🟪";
+    case 5: return "⬛️";
+    default: return "◆";
+  }
+}
+
+window.addEventListener("load", update);
+window.addEventListener("load", setupMapInteraction);
+
+document.getElementById("copyBtn").addEventListener("click", async () => {
+  const text = document.getElementById("eew").textContent;
+
+  try {
+    await navigator.clipboard.writeText(text);
+    alert("コピー完了");
+  } catch(e) {
+    alert("ERROR\n"+e);
+  }
+});
+
+// ラジオ
 document.querySelectorAll('input[name="mode"]').forEach(radio => {
   radio.addEventListener("change", update);
 });
 
+// セレクト
 document.getElementById("areaSelect").addEventListener("change", update);
 document.getElementById("statusFormat").addEventListener("change", update);
 
 function update() {
   setNowTime();
+
+  // レベル取得
   const value = document.querySelector('input[name="mode"]:checked').value;
   let mode;
   if (value === "all") mode = 2;
   else if (value === "keihou") mode = 3;
   else if (value === "kiken_keihou") mode = 4;
 
+  // 地域取得
   const area = document.getElementById("areaSelect")
     .selectedOptions[0].textContent.trim();
   const statusFormat = document.getElementById("statusFormat").checked;
 
+  // まとめて渡す
   main(mode, area, statusFormat);
 }
 </script>
