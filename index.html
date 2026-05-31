@@ -373,7 +373,17 @@ async function main(mode=2,taisho_chiiki="全国",statusFormat=false) {
     }
     let count = 0;
 
-    for (const warnName in data.warnInfo) {
+　　const sortedWarnNames = Object.keys(data.warnInfo).sort((a, b) => {
+  　　const infoA = Object.values(warnArea).find(w => w.name === a);
+  　　const infoB = Object.values(warnArea).find(w => w.name === b);
+
+  　　const levelA = infoA?.level || 0;
+  　　const levelB = infoB?.level || 0;
+
+  　　return levelB - levelA;
+　　});
+
+for (const warnName of sortedWarnNames) {
       const areas = data.warnInfo[warnName];
       if (Object.keys(areas).length === 0) continue;
 
