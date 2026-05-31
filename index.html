@@ -426,279 +426,6 @@ async function main(mode=2,taisho_chiiki="全国",statusFormat=false) {
     document.getElementById("mapNote").textContent = "地図表示でエラーが発生しました。";
   }
 }
-
-async function getCityWarningsByArea(warnArea,taisho_chiiki="全国") {
-  const areaData = await getAreaData();
-  const targetCodes = getTargetRegionCodes(taisho_chiiki);
-  if (targetCodes.length === 0) throw new Error(`未対応の地域です: ${taisho_chiiki}`);
-
-  const warnByTypeAndArea = createWarnInfoTemplate(warnArea);
-  const statusInfo = createWarnInfoTemplate(warnArea);
-  const cityWarnLevels = {};
-  let reportDatetime = "";
-  let regionReportDT = "";
-  let publishingOffice = "";
-
-  const dataJson = await fetchR8WarningData(targetCodes);
-
-  for (const item of dataJson) {
-    if (!item || !item.warning) continue;
-    if (reportDatetime==="") {
-      reportDatetime = item.reportDatetime;
-      publishingOffice = item.publishingOffice || "";
-    } else if (item.reportDatetime > reportDatetime) {
-      reportDatetime = item.reportDatetime;
-      publishingOffice = item.publishingOffice || publishingOffice;
-    }
-
-    const largeAreaCode = item.regionCode;
-    const largeAreaName = getRegionName(largeAreaCode);
-
-    if (largeAreaName && taisho_chiiki===largeAreaName) {
-      if (!regionReportDT || item.reportDatetime > regionReportDT) regionReportDT = item.reportDatetime || "NaN";
-    }
-
-    for (const area of item.warning.class20Items || []) {
-      const cityInfo = areaData.class20s?.[area.areaCode];
-      if (!cityInfo) continue;
-      const cityName = cityInfo.name;
-
-      for (const w of area.kinds || []) {
-        if (!w.code || w.status === "解除") continue;
-
-        const info = warnArea[w.code];
-        if (!info) continue;
-
-        const warnName = info.name;
-        if (!warnName || !warnByTypeAndArea[warnName]) continue;
-
-        if (!warnByTypeAndArea[warnName][largeAreaName]) {
-          warnByTypeAndArea[warnName][largeAreaName] = [];
-        }
-
-        if (!warnByTypeAndArea[warnName][largeAreaName].includes(cityName)) {
-          warnByTypeAndArea[warnName][largeAreaName].push(cityName);
-        }
-
-        const status = w.status || "発表";
-        if (!statusInfo[warnName][largeAreaName]) statusInfo[warnName][largeAreaName] = {};
-        if (!statusInfo[warnName][largeAreaName][status]) statusInfo[warnName][largeAreaName][status] = [];
-        if (!statusInfo[warnName][largeAreaName][status].includes(cityName)) {
-          statusInfo[warnName][largeAreaName][status].push(cityName);
-        }
-
-        const currentLevel = cityWarnLevels[area.areaCode]?.level || 0;
-        if ((info.level || 0) > currentLevel) {
-          cityWarnLevels[area.areaCode] = {
-            level: info.level,
-            name: warnName,
-            cityName
-          };
-        }
-      }
-    }
-  }
-
-  const warnData = {
-    "reportDatetime": reportDatetime,
-    "publishingOffice": publishingOffice,
-    "warnInfo": warnByTypeAndArea,
-    "statusInfo": statusInfo
-  };
-  const mapInfo = {
-    targetCodes,
-    cityWarnLevels,
-    areaData
-  };
-
-  return {warnData,regionReportDT,mapInfo};
-}
-
-function createWarnInfoTemplate(warnArea) {
-  const warnByTypeAndArea = {};
-  for (const info of Object.values(warnArea)) {
-    if (!info.name || info.name === "解除" || info.name === "未定・予約") continue;
-    warnByTypeAndArea[info.name] = {};
-  }
-  return warnByTypeAndArea;
-}
-
-async function getAreaData() {
-  if (!areaDataCache) {
-    const res = await fetch(AREA_JSON_URL, {cache:"no-store"});
-    if (!res.ok) throw new Error(`地域定義JSONの取得に失敗しました: ${res.status}`);
-    areaDataCache = await res.json();
-  }
-  return areaDataCache;
-}
-
-async function getGeoJsonFeatures() {
-  if (!geoJsonFeatureCache) {
-    const results = await Promise.all(GEOJSON_INDEXES.map(async index => {
-      const res = await fetch(`${GEOJSON_BASE_URL}/class20s_${index}.json`, {cache:"force-cache"});
-      if (!res.ok) return [];
-      const json = await res.json();
-      return json.features || [];
-    }));
-    geoJsonFeatureCache = results.flat();
-  }
-  return geoJsonFeatureCache;
-}
-
-function getTargetRegionCodes(taisho_chiiki) {
-  if (taisho_chiiki === "全国") return Object.values(regionCodeByName);
-  const code = regionCodeByName[taisho_chiiki];
-  return code ? [code] : [];
-}
-
-function getRegionName(regionCode) {
-  for (const name in regionCodeByName) {
-    if (regionCodeByName[name] === regionCode) return name;
-  }
-  return regionCode;
-}
-
-async function fetchR8WarningData(regionCodes) {
-  const results = await Promise.all(regionCodes.map(async regionCode => {
-    const url = `${WARNING_R8_BASE_URL}/${regionCode}.json`;
-    try {
-      const res = await fetch(url, {cache:"no-store"});
-      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-      const reports = await res.json();
-      return reports.map(report => ({...report, regionCode}));
-    } catch(e) {
-      console.warn(`警報JSON取得失敗: ${url}`, e);
-      return [];
-    }
-  }));
-
-  return results.flat();
-}
-
-async function renderWarningMap(mapInfo, taisho_chiiki) {
-  const svg = document.getElementById("warningMap");
-  const note = document.getElementById("mapNote");
-  const title = document.getElementById("mapTitle");
-  svg.textContent = "";
-  title.textContent = `地図表示: ${taisho_chiiki}`;
-  note.textContent = "地図を描画中...";
-
-  try {
-    const features = await getGeoJsonFeatures();
-    const targetCityCodes = getTargetCityCodes(mapInfo.areaData, mapInfo.targetCodes);
-    const targetSet = new Set(targetCityCodes);
-    const targetFeatures = features.filter(feature => targetSet.has(feature.properties?.code));
-
-    if (targetFeatures.length === 0) {
-      note.textContent = "表示できる地図データがありません。";
-      return;
-    }
-
-    drawGeoJsonSvg(svg, targetFeatures, mapInfo.cityWarnLevels);
-    const warnedCount = Object.keys(mapInfo.cityWarnLevels).filter(code => targetSet.has(code)).length;
-    note.textContent = `表示区域: ${targetFeatures.length}件 / 発表中: ${warnedCount}件`;
-  } catch(e) {
-    note.textContent = `地図データを取得できませんでした: ${e.message || e}`;
-  }
-}
-
-function getTargetCityCodes(areaData, regionCodes) {
-  const regionSet = new Set(regionCodes);
-  return Object.keys(areaData.class20s || {}).filter(code => isCityInTargetRegion(areaData, code, regionSet));
-}
-
-function isCityInTargetRegion(areaData, cityCode, regionSet) {
-  let code = cityCode;
-
-  for (let i = 0; i < 8; i++) {
-    if (regionSet.has(code)) return true;
-    const node =
-      areaData.class20s?.[code] ||
-      areaData.class15s?.[code] ||
-      areaData.class10s?.[code] ||
-      areaData.offices?.[code];
-    const parent = node?.parent;
-    if (!parent || parent === code) return false;
-    code = parent;
-  }
-
-  return false;
-}
-
-function drawGeoJsonSvg(svg, features, cityWarnLevels) {
-  const bounds = getFeatureBounds(features);
-  const width = Math.max(svg.clientWidth || 640, 320);
-  const height = Math.max(svg.clientHeight || 420, 260);
-  const padding = 12;
-  const scaleX = (width - padding * 2) / Math.max(bounds.maxLon - bounds.minLon, 0.0001);
-  const scaleY = (height - padding * 2) / Math.max(bounds.maxLat - bounds.minLat, 0.0001);
-  const scale = Math.min(scaleX, scaleY);
-  const mapWidth = (bounds.maxLon - bounds.minLon) * scale;
-  const mapHeight = (bounds.maxLat - bounds.minLat) * scale;
-  const offsetX = (width - mapWidth) / 2;
-  const offsetY = (height - mapHeight) / 2;
-
-  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
-  svg.textContent = "";
-  mapView = {scale: 1, x: 0, y: 0};
-
-  const layer = document.createElementNS("http://www.w3.org/2000/svg", "g");
-  layer.setAttribute("id", "mapLayer");
-  svg.appendChild(layer);
-
-  for (const feature of features) {
-    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    path.setAttribute("d", geometryToPath(feature.geometry, bounds, scale, offsetX, offsetY));
-    path.setAttribute("class", "mapArea");
-
-    const code = feature.properties?.code;
-    const warning = cityWarnLevels[code];
-    path.setAttribute("fill", getMapColor(warning?.level));
-    path.setAttribute("data-code", code || "");
-
-    const label = document.createElementNS("http://www.w3.org/2000/svg", "title");
-    label.textContent = `${feature.properties?.name || code}: ${warning?.name || "発表なし"}`;
-    path.appendChild(label);
-    layer.appendChild(path);
-  }
-
-  applyMapTransform();
-}
-
-function getFeatureBounds(features) {
-  const bounds = {minLon: Infinity, maxLon: -Infinity, minLat: Infinity, maxLat: -Infinity};
-  for (const feature of features) {
-    walkCoordinates(feature.geometry?.coordinates, point => {
-      const lon = point[0];
-      const lat = point[1];
-      if (lon < bounds.minLon) bounds.minLon = lon;
-      if (lon > bounds.maxLon) bounds.maxLon = lon;
-      if (lat < bounds.minLat) bounds.minLat = lat;
-      if (lat > bounds.maxLat) bounds.maxLat = lat;
-    });
-  }
-  return bounds;
-}
-
-function geometryToPath(geometry, bounds, scale, offsetX, offsetY) {
-  if (!geometry) return "";
-  const polygons = geometry.type === "Polygon" ? [geometry.coordinates] : geometry.coordinates;
-  let d = "";
-
-  for (const polygon of polygons || []) {
-    for (const ring of polygon) {
-      ring.forEach((point, index) => {
-        const x = offsetX + (point[0] - bounds.minLon) * scale;
-        const y = offsetY + (bounds.maxLat - point[1]) * scale;
-        d += `${index === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`;
-      });
-      d += "Z";
-    }
-  }
-
-  return d;
-}
-
 function walkCoordinates(value, callback) {
   if (!Array.isArray(value)) return;
   if (typeof value[0] === "number" && typeof value[1] === "number") {
@@ -721,7 +448,10 @@ function getMapColor(level) {
 function applyMapTransform() {
   const layer = document.getElementById("mapLayer");
   if (!layer) return;
-  layer.setAttribute("transform", `translate(${mapView.x.toFixed(2)} ${mapView.y.toFixed(2)}) scale(${mapView.scale.toFixed(4)})`);
+  layer.setAttribute(
+    "transform",
+    `translate(${mapView.x.toFixed(2)} ${mapView.y.toFixed(2)}) scale(${mapView.scale.toFixed(4)})`
+  );
 }
 
 function zoomMap(factor, centerX, centerY) {
@@ -732,17 +462,19 @@ function zoomMap(factor, centerX, centerY) {
   mapView.x = centerX - (centerX - mapView.x) * (newScale / oldScale);
   mapView.y = centerY - (centerY - mapView.y) * (newScale / oldScale);
   mapView.scale = newScale;
+
   applyMapTransform();
 }
 
 function resetMapView() {
-  mapView = {scale: 1, x: 0, y: 0};
+  mapView = { scale: 1, x: 0, y: 0 };
   applyMapTransform();
 }
 
 function getSvgPoint(svg, event) {
   const rect = svg.getBoundingClientRect();
   const viewBox = svg.viewBox.baseVal;
+
   return {
     x: (event.clientX - rect.left) * (viewBox.width / rect.width),
     y: (event.clientY - rect.top) * (viewBox.height / rect.height)
@@ -752,15 +484,18 @@ function getSvgPoint(svg, event) {
 function setupMapInteraction() {
   const svg = document.getElementById("warningMap");
 
-  svg.addEventListener("wheel", event => {
+  svg.addEventListener("wheel", (event) => {
     event.preventDefault();
     const point = getSvgPoint(svg, event);
-    zoomMap(event.deltaY < 0 ? 1.2 : 1 / 1.2, point.x, point.y);
-  }, {passive: false});
 
-  svg.addEventListener("pointerdown", event => {
+    zoomMap(event.deltaY < 0 ? 1.2 : 1 / 1.2, point.x, point.y);
+  }, { passive: false });
+
+  svg.addEventListener("pointerdown", (event) => {
     svg.setPointerCapture(event.pointerId);
+
     const point = getSvgPoint(svg, event);
+
     mapDrag = {
       active: true,
       startX: point.x,
@@ -768,27 +503,33 @@ function setupMapInteraction() {
       originX: mapView.x,
       originY: mapView.y
     };
+
     svg.classList.add("dragging");
   });
 
-  svg.addEventListener("pointermove", event => {
+  svg.addEventListener("pointermove", (event) => {
     if (!mapDrag.active) return;
+
     const point = getSvgPoint(svg, event);
+
     mapView.x = mapDrag.originX + (point.x - mapDrag.startX);
     mapView.y = mapDrag.originY + (point.y - mapDrag.startY);
+
     applyMapTransform();
   });
 
-  const stopDrag = event => {
+  const stopDrag = (event) => {
     if (event.pointerId !== undefined && svg.hasPointerCapture(event.pointerId)) {
       svg.releasePointerCapture(event.pointerId);
     }
+
     mapDrag.active = false;
     svg.classList.remove("dragging");
   };
 
   svg.addEventListener("pointerup", stopDrag);
   svg.addEventListener("pointercancel", stopDrag);
+
   svg.addEventListener("pointerleave", () => {
     mapDrag.active = false;
     svg.classList.remove("dragging");
@@ -798,10 +539,12 @@ function setupMapInteraction() {
     const viewBox = svg.viewBox.baseVal;
     zoomMap(1.25, viewBox.width / 2, viewBox.height / 2);
   });
+
   document.getElementById("mapZoomOut").addEventListener("click", () => {
     const viewBox = svg.viewBox.baseVal;
     zoomMap(1 / 1.25, viewBox.width / 2, viewBox.height / 2);
   });
+
   document.getElementById("mapReset").addEventListener("click", resetMapView);
 }
 
@@ -824,36 +567,38 @@ document.getElementById("copyBtn").addEventListener("click", async () => {
   try {
     await navigator.clipboard.writeText(text);
     alert("コピー完了");
-  } catch(e) {
-    alert("ERROR\n"+e);
+  } catch (e) {
+    alert("ERROR\n" + e);
   }
 });
 
-// ラジオ
-document.querySelectorAll('input[name="mode"]').forEach(radio => {
+// ラジオボタン変更
+document.querySelectorAll('input[name="mode"]').forEach((radio) => {
   radio.addEventListener("change", update);
 });
 
-// セレクト
+// 地域選択
 document.getElementById("areaSelect").addEventListener("change", update);
+
+// 表示形式チェック
 document.getElementById("statusFormat").addEventListener("change", update);
 
 function update() {
   setNowTime();
 
-  // レベル取得
   const value = document.querySelector('input[name="mode"]:checked').value;
+
   let mode;
   if (value === "all") mode = 2;
   else if (value === "keihou") mode = 3;
   else if (value === "kiken_keihou") mode = 4;
 
-  // 地域取得
-  const area = document.getElementById("areaSelect")
+  const area = document
+    .getElementById("areaSelect")
     .selectedOptions[0].textContent.trim();
+
   const statusFormat = document.getElementById("statusFormat").checked;
 
-  // まとめて渡す
   main(mode, area, statusFormat);
 }
 </script>
