@@ -490,7 +490,7 @@ async function getCityWarningsByArea(warnArea,taisho_chiiki="全国") {
           warnByTypeAndArea[warnName][largeAreaName].push(cityName);
         }
 
-        const status = w.status || "発表";
+        const status = w.status || "継続";
         if (!statusInfo[warnName][largeAreaName]) statusInfo[warnName][largeAreaName] = {};
         if (!statusInfo[warnName][largeAreaName][status]) statusInfo[warnName][largeAreaName][status] = [];
         if (!statusInfo[warnName][largeAreaName][status].includes(cityName)) {
