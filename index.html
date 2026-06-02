@@ -365,12 +365,26 @@ async function main(mode=2,taisho_chiiki="全国",statusFormat=false) {
 
     let text = "";
     if (statusFormat) {
-      text = `《${titleKind}》${titleArea2}\n${dd}日${HH}時${mm}分 ${data.publishingOffice || "気象庁"}発表`;
-    } else {
-      text = `《${titleArea1}${titleKind}》${titleArea2}\n${MM}月${dd}日${HH}時${mm}分`;
-      if (regionReportDT) text += " 発表";
-      else text += " 更新";
-    }
+  text = `《${titleKind}》${titleArea2}\n${dd}日${HH}時${mm}分 ${data.publishingOffice || "気象庁"}発表`;
+} else {
+
+  text = `《${titleArea1}${titleKind}》${titleArea2}\n`;
+
+  if (regionReportDT) {
+    const rdt = new Date(regionReportDT);
+
+    const rdd = String(rdt.getDate()).padStart(2,'0');
+    const rHH = String(rdt.getHours()).padStart(2,'0');
+    const rmm = String(rdt.getMinutes()).padStart(2,'0');
+
+    text += `${rdd}日${rHH}時${rmm}分 ${data.publishingOffice || "気象庁"}発表`;
+
+  } else {
+
+    text += `${dd}日${HH}時${mm}分 継続`;
+
+  }
+}
     let count = 0;
 
 　　const sortedWarnNames = Object.keys(data.warnInfo).sort((a, b) => {
